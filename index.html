@@ -487,6 +487,16 @@ input.val-nc{border-color:var(--danger)!important;background:var(--danger-bg)!im
 .pdf-actions button{background:var(--amber);color:#15211c;border:none;border-radius:8px;padding:8px 12px;font-weight:700;font-size:13px}
 .pdf-actions [data-a="close"]{background:#3a4a43;color:#fff}
 .pdf-frame{flex:1;width:100%;border:none;background:#fff}
+.pdf-hint{background:#faf6ec;color:#5a4b17;font-size:11px;line-height:1.35;padding:7px 12px;border-bottom:1px solid #ece3c9}
+.svc{border:1px solid rgba(120,130,125,.28);border-radius:12px;padding:12px;margin-top:10px}
+.svc-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.svc-name{font-weight:600;font-size:14px}
+.svc-del{background:transparent;border:none;color:var(--danger);font-size:12px;text-decoration:underline}
+.seg-svc{display:grid;grid-template-columns:1fr 1fr;gap:6px;max-width:320px}
+.seg-svc button{padding:9px;border:1px solid rgba(120,130,125,.35);border-radius:9px;background:var(--surface);font-weight:600;font-size:13px;color:inherit}
+.seg-svc button[data-on="ok"]{background:var(--ok-bg);border-color:var(--ok);color:var(--ok)}
+.seg-svc button[data-on="na"]{background:rgba(120,130,125,.16);color:#6b736e}
+.svc-ph{margin:10px 0}
 .pdf-ov.bk{padding:16px}
 .bk-box{background:var(--surface);width:100%;max-width:560px;max-height:88vh;margin:auto;border-radius:14px;display:flex;flex-direction:column;overflow:hidden}
 .bk-box .pdf-bar{border-radius:0}
@@ -643,7 +653,7 @@ $("#imgInput").addEventListener("change",e=>{const f=e.target.files&&e.target.fi
 
 /* ---------- modelo ---------- */
 function novoAtendimento(){return{id:uid(),tipo:"atendimento",criadoEm:Date.now(),shopping:"",os:"",data:todayISO(),tecnico:"",logoCliente:null,
-  cubiculos:[],observacoesGerais:"",assinaturaTecnico:"",assinaturaResponsavel:"",nomeResponsavel:"",finalizado:false};}
+  cubiculos:[],observacoesGerais:"",assinaturaTecnico:"",assinaturaResponsavel:"",nomeResponsavel:"",conclusao:"",finalizado:false};}
 function novoCubiculo(){return{id:uid(),tag:"",lojista:"",modelo:"",inspecao:{},
   ensaios:{
     disj:{u:"MΩ",ne:false,mo:"",AB:"",BC:"",CA:"",AT:"",BT:"",CT:"",rcRef:"",rcA:"",rcB:"",rcC:""},
@@ -786,6 +796,7 @@ function refreshAlertBox(){const wrap=MAIN.querySelector("#alertWrap");if(!wrap)
 function refreshBadge(gid){const span=MAIN.querySelector('[data-badge="'+gid+'"]');if(!span)return;let html="";const g=INSP.find(x=>x.id===gid);
   if(g)html=grpBadge(curCub,g);else{const al=alertasCubiculo(curCub);
     if(gid==="ensaios")html=al.some(x=>/isolamento|contato|hi-pot|desequil|ensaio não|ruptura/i.test(x.txt))?'<span class="badge warn">Verificar</span>':"";
+    else if(gid==="servicos")html=svcBadge(curCub);
     else if(gid==="parecer")html=al.some(x=>/Parecer/.test(x.txt))?'<span class="badge danger">Intervenção</span>':"";}
   span.innerHTML=html;}
 
@@ -861,11 +872,13 @@ function renderCubiculo(m){if(!cur||!curCub){go("atendimento");return;}
     <div id="alertWrap">${alertBox}</div>
     ${sec("identif",2,"Identificação do cubículo","",identBody,true)}
     ${inspSecs}
-    ${sec("ensaios",n+1,"Ensaios elétricos",ensBadge,ensaiosBodyHtml(),false)}
-    ${sec("parecer",n+2,"Parecer / status de intervenção",parBadge,parecerBody,false)}`;
+    ${sec("servicos",n+1,"Registros gerais — serviços executados",svcBadge(c),servicosBodyHtml(),false)}
+    ${sec("ensaios",n+2,"Ensaios elétricos",ensBadge,ensaiosBodyHtml(),false)}
+    ${sec("parecer",n+3,"Parecer / status de intervenção",parBadge,parecerBody,false)}`;
   m.querySelectorAll("[data-c]").forEach(el=>{el.oninput=()=>{c[el.dataset.c]=el.value;persistSoon();if(["tag","lojista","modelo"].includes(el.dataset.c))setContext([c.tag||"Cubículo",c.lojista||"Lojista",c.modelo||"Modelo"]);};});
   m.querySelectorAll(".chk[data-item]").forEach(bindChk);
   bindEnsaios(m.querySelector('details[data-k="ensaios"] .sec-body'));
+  bindServicos(m.querySelector('details[data-k="servicos"] .sec-body'));
   m.querySelectorAll(".parecer").forEach(wrap=>{const tg=wrap.querySelector(".toggle-nok");if(!tg)return;const comp=tg.dataset.par;
     tg.querySelectorAll("button").forEach(btn=>btn.onclick=()=>{c.pareceres[comp]=c.pareceres[comp]||{status:"",just:""};c.pareceres[comp].status=(c.pareceres[comp].status===btn.dataset.v?"":btn.dataset.v);persist();
       tg.querySelectorAll("button").forEach(b2=>{if(b2.dataset.v===c.pareceres[comp].status)b2.setAttribute("data-on",b2.dataset.v==="ok"?"ok":"nok");else b2.removeAttribute("data-on");});
@@ -886,6 +899,7 @@ function renderFechamento(m){if(!cur){go("home");return;}
     :`<div class="card"><div class="pad"><div class="c-ok">✓ Nenhuma não conformidade registrada.</div></div></div>`;
   m.innerHTML=`<h2 class="view-title">Fechamento do atendimento</h2><p class="view-sub">Laudo individualizado por lojista · parecer macro e assinaturas.</p>${painel}
     <div class="card"><div class="pad"><div class="field"><label class="lab">Observações gerais da engenharia</label><textarea id="obsG" style="min-height:120px" placeholder="Parecer macro, recomendações gerais…">${esc(cur.observacoesGerais)}</textarea></div></div></div>
+    <div class="card"><div class="pad"><div class="field"><label class="lab">Conclusão / Parecer técnico final</label><textarea id="conclG" style="min-height:150px" placeholder="Toque em Gerar conclusão ou escreva o parecer final…">${esc(cur.conclusao||"")}</textarea></div><button class="btn ghost sm" id="genConcl">⚙︎ Gerar conclusão (engenheiro sênior)</button><p class="small" style="margin-top:6px">Revise sempre antes de emitir. O texto libera a operação com recomendações — ajuste conforme o caso.</p></div></div>
     <div class="kicker">Assinaturas</div>
     <div class="card"><div class="pad"><label class="lab">Técnico responsável</label>
       <div class="sigwrap"><button class="btn sm ghost clr" data-clr="tec">Limpar</button><canvas data-sig="tec"></canvas></div><div class="sig-cap">${esc(cur.tecnico||"Assinatura do técnico")}</div>
@@ -894,6 +908,8 @@ function renderFechamento(m){if(!cur){go("home");return;}
     <p class="footnote">O PDF cita: ${NORMAS}</p>`;
   $("#obsG").oninput=e=>{cur.observacoesGerais=e.target.value;persistSoon();};
   $("#nomeResp").oninput=e=>{cur.nomeResponsavel=e.target.value;persistSoon();};
+  $("#conclG").oninput=e=>{cur.conclusao=e.target.value;persistSoon();};
+  $("#genConcl").onclick=()=>{const txt=gerarConclusao();cur.conclusao=txt;const ta=$("#conclG");if(ta)ta.value=txt;persist();toast("Conclusão gerada — revise antes de emitir");};
   sigPads={};m.querySelectorAll("canvas[data-sig]").forEach(cv=>{const key=cv.dataset.sig;initSig(cv,key,key==="tec"?cur.assinaturaTecnico:cur.assinaturaResponsavel);});
   m.querySelectorAll("[data-clr]").forEach(b=>b.onclick=()=>{const key=b.dataset.clr;sigPads[key].clear();if(key==="tec")cur.assinaturaTecnico="";else cur.assinaturaResponsavel="";persist();});
   setActionbar(`<button class="btn ghost" id="fBack">‹ Voltar</button><button class="btn primary" id="genPdf">📄 Gerar laudo PDF</button>`);
@@ -925,7 +941,7 @@ async function gerarPDF(){
     doc.setTextColor(255);doc.setFont("helvetica","bold");doc.setFontSize(12);doc.text("LAUDO DE MANUTENÇÃO — CUBÍCULOS BLINDADOS MT · 15 kV",ML,27.5);
     doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(200,208,203);
     doc.text(`${(cur.shopping||"Cliente não informado")}  ·  OS ${cur.os||"—"}  ·  ${fmtDate(cur.data)}  ·  Téc.: ${cur.tecnico||"—"}`,ML,32.5);y=43;}
-  function footer(){const pg=doc.internal.getNumberOfPages();for(let i=1;i<=pg;i++){doc.setPage(i);
+  function footer(){const pg=doc.internal.getNumberOfPages();for(let i=1;i<=pg;i++){doc.setPage(i);if(i===1||i===pg){continue;}
     if(KVAR_LOGO)drawLogo(KVAR_LOGO,(W-44)/2,279.5,44,5,"center");
     doc.setDrawColor(...AMBER);doc.setLineWidth(0.6);doc.line(ML,286,ML+18,286);doc.setFontSize(7.5);doc.setTextColor(120);
     doc.text("Grupo AKS · Eng. Euclides Neto — CREA-PA 17184-D",ML,290);doc.text(`Página ${i}/${pg}`,W-MR,290,{align:"right"});
@@ -934,7 +950,38 @@ async function gerarPDF(){
   function sectionTitle(t){ensureSpace(13);doc.setFillColor(...DARK);doc.rect(ML,y,CW,7.5,"F");doc.setFillColor(...AMBER);doc.rect(ML,y,2.6,7.5,"F");doc.setTextColor(255);doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.text(t.toUpperCase(),ML+5,y+5.1);y+=11;doc.setTextColor(40);}
   function neNote(txt){ensureSpace(10);doc.setFillColor(251,238,207);const lines=doc.splitTextToSize(txt,CW-6);const hh=Math.max(8,lines.length*4+3);doc.rect(ML,y,CW,hh,"F");doc.setTextColor(122,79,0);doc.setFont("helvetica","bold");doc.setFontSize(8.3);doc.text(lines,ML+3,y+5);y+=hh+3;doc.setTextColor(40);}
 
-  header();
+  function coverPage(){
+    doc.setFillColor(...DARK);doc.rect(0,0,W,297,"F");
+    doc.setFillColor(255,255,255);doc.rect(0,0,W,26,"F");
+    drawLogo(cli,ML,5,60,16,"left");drawLogo(aks,W-MR-60,5,60,16,"right");
+    if(!cli){doc.setFontSize(8);doc.setTextColor(185);doc.text("logo do cliente",ML,14);}
+    doc.setFillColor(...AMBER);doc.rect(0,26,W,2.4,"F");
+    doc.setTextColor(255);doc.setFont("helvetica","bold");doc.setFontSize(30);doc.text("LAUDO TÉCNICO",W/2,92,{align:"center"});
+    doc.setFontSize(14);doc.setTextColor(...AMBER);doc.text("INSPEÇÃO E MANUTENÇÃO PREVENTIVA",W/2,105,{align:"center"});
+    doc.setFont("helvetica","normal");doc.setFontSize(11.5);doc.setTextColor(210,218,213);doc.text("Cubículos Blindados de Média Tensão · Classe 15 kV",W/2,115,{align:"center"});
+    const bx=ML+6,bw=CW-12,by=138,bh=84;doc.setFillColor(255,255,255);doc.roundedRect(bx,by,bw,bh,3,3,"F");doc.setFillColor(...AMBER);doc.rect(bx,by,3,bh,"F");
+    const rows=[["Cliente / Unidade",cur.shopping||"—"],["Ordem de serviço",cur.os||"—"],["Data da inspeção",fmtDate(cur.data)],["Cubículos inspecionados",String((cur.cubiculos||[]).length)],["Técnico executante",cur.tecnico||"—"],["Responsável técnico (ART)","Eng. Euclides Neto — CREA-PA 17184-D"]];
+    let ry=by+13;doc.setFontSize(9);
+    rows.forEach(([k,v])=>{doc.setFont("helvetica","normal");doc.setTextColor(130);doc.text(k.toUpperCase(),bx+8,ry);doc.setFont("helvetica","bold");doc.setTextColor(28);const vl=doc.splitTextToSize(String(v),bw-70);doc.text(vl,bx+62,ry);ry+=Math.max(11,vl.length*5+5);});
+    if(KVAR_LOGO)drawLogo(KVAR_LOGO,(W-50)/2,248,50,7,"center");
+    doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(255);doc.text("GRUPO AKS · ENGENHARIA E MANUTENÇÃO",W/2,264,{align:"center"});
+    doc.setFont("helvetica","normal");doc.setFontSize(6.6);doc.setTextColor(150,160,155);doc.text(NORMAS,W/2,272,{align:"center",maxWidth:CW});
+  }
+  function backCover(){doc.addPage();
+    doc.setFillColor(...DARK);doc.rect(0,0,W,297,"F");
+    doc.setTextColor(255);doc.setFont("helvetica","bold");doc.setFontSize(17);doc.text("GRUPO AKS",W/2,118,{align:"center"});
+    doc.setFont("helvetica","normal");doc.setFontSize(11);doc.setTextColor(210,218,213);doc.text("Engenharia e Manutenção Elétrica",W/2,128,{align:"center"});
+    doc.setFontSize(9);doc.setTextColor(180,190,185);doc.text("Eng. Euclides Neto — CREA-PA 17184-D",W/2,137,{align:"center"});
+    doc.setFillColor(...AMBER);doc.rect((W-40)/2,146,40,1.6,"F");
+    doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...AMBER);doc.text("NORMAS DE REFERÊNCIA",W/2,164,{align:"center"});
+    doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(200,208,203);
+    ["ABNT NBR 14039 — Instalações elétricas de média tensão","IEC 62271-200 / 100 / 102 — Conjuntos de manobra e disjuntores","ABNT NBR 6813 / IEEE 43 — Resistência de isolamento","IEEE 400 / 400.2 — Ensaios de campo em cabos isolados"].forEach((l,i)=>doc.text(l,W/2,174+i*6,{align:"center"}));
+    const dl=doc.splitTextToSize("Documento técnico emitido para fins de manutenção. Os resultados referem-se exclusivamente às condições verificadas na data da inspeção. A reprodução parcial deste laudo sem autorização do responsável técnico não é permitida.",CW-24);
+    doc.setFontSize(7.5);doc.setTextColor(140,150,145);doc.text(dl,W/2,214,{align:"center"});
+    if(KVAR_LOGO)drawLogo(KVAR_LOGO,(W-50)/2,252,50,7,"center");
+  }
+  
+  coverPage();doc.addPage();header();
   const problemas=[];cur.cubiculos.forEach(c=>alertasCubiculo(c).forEach(a=>problemas.push({c,a})));
   sectionTitle("Painel de atenção");
   if(problemas.length){doc.setFillColor(...DANGER);doc.rect(ML,y,CW,8.5,"F");doc.setTextColor(255);doc.setFont("helvetica","bold");doc.setFontSize(9.5);
@@ -958,6 +1005,14 @@ async function gerarPDF(){
         columnStyles:{0:{cellWidth:60},1:{cellWidth:26,halign:"center",fontStyle:"bold"},2:{cellWidth:CW-86}},
         didParseCell:d=>{if(d.section==="body"&&d.column.index===1){const v=d.cell.raw;if(v==="Não conforme")d.cell.styles.textColor=DANGER;else if(v==="Analisar")d.cell.styles.textColor=WARN;else if(v==="Conforme")d.cell.styles.textColor=OK;}}});
       y=doc.lastAutoTable.finalY+3;});
+    // registros gerais / serviços executados
+    (function(){const svs=(c.servicos||[]).filter(s=>s.status);if(!svs.length)return;ensureSpace(14);
+      doc.autoTable({startY:y,margin:{left:ML,right:MR},head:[["Registros gerais — serviços executados","Situação","Observação"]],
+        body:svs.map(s=>[s.nome,s.status==="exec"?"Executado":"Não se aplica",s.obs||""]),
+        styles:{fontSize:7.8,cellPadding:1.7,overflow:"linebreak",lineColor:[220,224,220],lineWidth:0.1},headStyles:tblHead(),
+        columnStyles:{0:{cellWidth:CW*0.46},1:{cellWidth:24,fontStyle:"bold"},2:{cellWidth:CW-CW*0.46-24}},
+        didParseCell:d=>{if(d.section==="body"&&d.column.index===1)d.cell.styles.textColor=(d.cell.raw==="Executado"?OK:[120,120,120]);}});
+      y=doc.lastAutoTable.finalY+3;})();
     // ensaios
     ensureSpace(12);doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...DARK);doc.text("Ensaios elétricos",ML,y);
     doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(120);doc.text("Legenda: verde conforme · amarelo atenção · vermelho não conforme",ML+30,y);y+=3;doc.setTextColor(40);
@@ -983,21 +1038,70 @@ async function gerarPDF(){
     if(parInter.length){ensureSpace(10+parInter.length*8);doc.autoTable({startY:y,margin:{left:ML,right:MR},head:[["Componente com intervenção","Justificativa"]],body:parInter.map(([comp,p])=>[comp,p.just||"(sem justificativa)"]),styles:{fontSize:8,cellPadding:2,overflow:"linebreak"},headStyles:tblHead(DANGER),columnStyles:{0:{cellWidth:55}}});y=doc.lastAutoTable.finalY+4;}
     if(c.observacoes){ensureSpace(10);doc.setFont("helvetica","italic");doc.setFontSize(8.5);doc.setTextColor(70);const lines=doc.splitTextToSize("Obs.: "+c.observacoes,CW);ensureSpace(lines.length*4+2);doc.text(lines,ML,y);y+=lines.length*4+2;doc.setFont("helvetica","normal");doc.setTextColor(40);}
     // fotos
-    const fotos=[];Object.values(c.inspecao).forEach(o=>(o&&o.fotos?o.fotos:[]).forEach(f=>fotos.push(f)));
+    const fotos=[];Object.values(c.inspecao).forEach(o=>(o&&o.fotos?o.fotos:[]).forEach(f=>fotos.push(f)));(c.servicos||[]).forEach(s=>(s.fotos||[]).forEach(f=>fotos.push(f)));
     if(fotos.length){ensureSpace(8);doc.setFontSize(8.5);doc.setTextColor(...DARK);doc.setFont("helvetica","bold");doc.text("Registro fotográfico:",ML,y);y+=3;doc.setTextColor(40);doc.setFont("helvetica","normal");
       const fw=(CW-2*4)/3,fh=fw*0.72;let col=0,rowY=y+2;fotos.forEach(f=>{if(col===0){ensureSpace(fh+6);rowY=y;}const x=ML+col*(fw+4);try{doc.addImage(f,"JPEG",x,rowY,fw,fh);}catch(_){}col++;if(col===3){col=0;y=rowY+fh+4;}});if(col!==0)y=rowY+fh+4;}
     y+=4;});
 
   if(cur.observacoesGerais){sectionTitle("Observações gerais da engenharia");doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(45);doc.splitTextToSize(cur.observacoesGerais,CW).forEach(l=>{ensureSpace(6);doc.text(l,ML,y);y+=5;});y+=4;}
+  if(cur.conclusao){sectionTitle("Conclusão / Parecer técnico");doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(45);
+    cur.conclusao.split("\n").forEach(par=>{
+      if(par.trim()==="RECOMENDAÇÕES"){y+=1;ensureSpace(9);doc.setFont("helvetica","bold");doc.setFontSize(10);doc.setTextColor(...DARK);doc.text("RECOMENDAÇÕES",ML,y);y+=5.5;doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(45);return;}
+      if(!par.trim()){y+=2.5;return;}
+      doc.splitTextToSize(par,CW).forEach(l=>{ensureSpace(6);doc.text(l,ML,y);y+=4.8;});});y+=5;}
   ensureSpace(46);sectionTitle("Assinaturas");const sigW=(CW-14)/2,sigH=26,sy=y;
   const drawSig=(x,img,nome,cargo)=>{if(img){try{doc.addImage(img,"PNG",x,sy,sigW,sigH);}catch(_){}}doc.setDrawColor(120);doc.setLineWidth(0.3);doc.line(x,sy+sigH+1,x+sigW,sy+sigH+1);doc.setFontSize(9);doc.setTextColor(40);doc.setFont("helvetica","bold");doc.text(nome||"—",x+sigW/2,sy+sigH+6,{align:"center"});doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(110);doc.text(cargo,x+sigW/2,sy+sigH+10,{align:"center"});};
   drawSig(ML,cur.assinaturaTecnico,cur.tecnico,"Técnico responsável");drawSig(ML+sigW+14,cur.assinaturaResponsavel,cur.nomeResponsavel,"Responsável pelo shopping");
-  footer();cur.finalizado=true;persist();
+  backCover();footer();cur.finalizado=true;persist();
   const fname=`Laudo_${(cur.shopping||"cliente").replace(/[^\w]+/g,"_")}_${(cur.os||"OS").replace(/[^\w]+/g,"_")}.pdf`;
   try{const blob=doc.output("blob");const url=URL.createObjectURL(blob);showPdfModal(blob,url,fname);toast("Laudo gerado");}
   catch(err){try{doc.save(fname);toast("Laudo gerado");}catch(e2){toast("Não foi possível gerar o PDF neste ambiente.");}}}
 
-function ensureEnsaios(cub){if(!cub)return;let e=cub.ensaios;if(!e||typeof e!=="object")e=cub.ensaios={};
+function gerarConclusao(){
+  const cubs=cur.cubiculos||[];const nCub=cubs.length;let nc=[],aten=[];
+  cubs.forEach(c=>{const tag=c.tag||c.lojista||"Cubículo";alertasCubiculo(c).forEach(a=>{if(a.nivel==="danger")nc.push({tag,txt:a.txt});else if(a.nivel==="warn")aten.push({tag,txt:a.txt});});});
+  const P=[];
+  P.push(`Foram inspecionados ${nCub} cubículo${nCub===1?"":"s"} blindado${nCub===1?"":"s"} de média tensão, classe 15 kV, da subestação de ${cur.shopping||"unidade do cliente"}, contemplando inspeção visual e mecânica dos compartimentos, verificação dos dispositivos de manobra e proteção e ensaios elétricos de resistência de isolamento, resistência de contato e suportabilidade dielétrica (Hi-Pot CC), tomando como referência a ABNT NBR 14039 e as práticas consagradas das normas IEC 62271, IEEE 43 e IEEE 400.`);
+  if(!nc.length&&!aten.length){
+    P.push(`Os ensaios e verificações executados apresentaram resultados dentro dos parâmetros de referência adotados, não tendo sido identificadas não conformidades. Conclui-se que o conjunto encontra-se APTO À OPERAÇÃO em condições normais de serviço, recomendando-se apenas a manutenção do plano preventivo periódico.`);
+  }else{
+    if(nc.length)P.push(`Ao longo dos trabalhos foram identificados ${nc.length} ponto${nc.length>1?"s":""} de não conformidade e ${aten.length} ponto${aten.length>1?"s":""} de atenção.`);
+    else P.push(`Não foram identificadas não conformidades de caráter crítico; registraram-se, contudo, ${aten.length} ponto${aten.length>1?"s":""} de atenção que demandam acompanhamento.`);
+    P.push(`Com base no conjunto dos resultados, e sob o ponto de vista da engenharia, entende-se que o SISTEMA PODE PERMANECER EM OPERAÇÃO, ficando essa continuidade condicionada à implementação, em caráter programado, das recomendações a seguir. Os pontos de atenção não impõem, por si sós, a interrupção do fornecimento, mas devem ser monitorados e sanados na próxima intervenção preventiva, evitando sua evolução para falha.`);
+  }
+  const R=[];
+  if(nc.length){R.push("Programar intervenção corretiva para os itens classificados como não conformes, priorizando os de maior criticidade:");nc.slice(0,14).forEach(x=>R.push("• "+x.tag+": "+x.txt+"."));}
+  if(aten.length){R.push("Acompanhar e reavaliar, na próxima manutenção, os pontos de atenção:");aten.slice(0,14).forEach(x=>R.push("• "+x.tag+": "+x.txt+"."));}
+  R.push("Executar reaperto geral das conexões de potência com torquímetro calibrado, conforme torque especificado pelo fabricante.");
+  R.push("Realizar limpeza e higienização dos compartimentos, isoladores e barramentos, inspecionando sinais de trilhamento elétrico (tracking), corrosão e descargas parciais.");
+  R.push("Manter a periodicidade de manutenção preventiva e de ensaios elétricos em intervalo não superior a 12 meses, registrando os valores para análise de tendência.");
+  R.push("Para cabos e terminações em isolação extrudada (XLPE/EPR), avaliar a substituição do ensaio Hi-Pot CC por ensaio VLF a 0,1 Hz (IEEE 400.2), por ser menos agressivo à isolação e mais eficaz na detecção de defeitos.");
+  R.push("Comparar os resultados obtidos ao histórico de cada equipamento, observando quedas progressivas de isolamento ou elevação da resistência de contato como indicativos de degradação.");
+  const F=`O presente parecer reflete as condições verificadas na data da inspeção e tem sua validade condicionada à manutenção dessas condições operacionais, recomendando-se nova avaliação em prazo não superior a 12 meses. Responsável técnico: Eng. Euclides Neto — CREA-PA 17184-D — Grupo AKS Engenharia e Manutenção.`;
+  return P.join("\n\n")+"\n\nRECOMENDAÇÕES\n"+R.join("\n")+"\n\n"+F;
+}
+const SERVICOS_DEF=["Limpeza geral do cubículo","Reaperto de barramentos e conexões (torquímetro)","Aplicação de limpa-contato","Aplicação de álcool isopropílico nos isolantes","Lixamento / tratamento de barramento","Substituição de parafusos / ferragens","Lubrificação de mecanismos (chave/disjuntor)","Verificação e reaperto do aterramento"];
+function seedServicos(){return SERVICOS_DEF.map(nome=>({id:uid(),nome,status:"",obs:"",fotos:[],fixo:true}));}
+function svcThumbs(s){return (s.fotos||[]).map((src,i)=>`<div class="thumb"><img src="${src}"><button data-svcdelfoto="${s.id}:${i}">×</button></div>`).join("");}
+function svcBadge(c){const svs=c.servicos||[];const done=svs.filter(s=>s.status==="exec").length,tot=svs.length;return tot?`<span class="badge ${done?"ok":"warn"}">${done}/${tot}</span>`:"";}
+function servicosBodyHtml(){const c=curCub;const svs=c.servicos||[];
+  return `<p class="small" style="margin-top:8px">Manutenção preventiva: registre <b>tudo</b> que foi executado — marque, fotografe e descreva. Use “Adicionar registro” para criar um serviço novo na hora.</p>`
+  + svs.map(s=>`<div class="svc" data-svc="${s.id}">
+      <div class="svc-head"><span class="svc-name">${esc(s.nome)}</span>${s.fixo?"":`<button type="button" class="svc-del" data-svcdel="${s.id}">remover</button>`}</div>
+      <div class="seg-svc" data-svcseg="${s.id}"><button type="button" data-v="exec" ${s.status==="exec"?'data-on="ok"':""}>Executado</button><button type="button" data-v="na" ${s.status==="na"?'data-on="na"':""}>Não se aplica</button></div>
+      <div class="svc-ph"><button type="button" class="btn sm" data-svcfoto="${s.id}">📷 Adicionar foto</button><div class="thumbs">${svcThumbs(s)}</div></div>
+      <textarea data-svcobs="${s.id}" placeholder="Observação do serviço (opcional)…">${esc(s.obs)}</textarea>
+    </div>`).join("")
+  + `<button type="button" class="btn ghost sm" id="svcAdd" style="margin-top:8px">+ Adicionar registro</button>`;}
+function updateServicos(){const body=MAIN.querySelector('details[data-k="servicos"] .sec-body');if(!body)return;body.innerHTML=servicosBodyHtml();bindServicos(body);}
+function bindServicos(scope){if(!scope)return;const c=curCub;const find=id=>(c.servicos||[]).find(x=>x.id===id);
+  scope.querySelectorAll("[data-svcseg]").forEach(seg=>{const s=find(seg.dataset.svcseg);if(!s)return;seg.querySelectorAll("button").forEach(btn=>btn.onclick=()=>{s.status=(s.status===btn.dataset.v?"":btn.dataset.v);persist();seg.querySelectorAll("button").forEach(b2=>{if(b2.dataset.v===s.status)b2.setAttribute("data-on",b2.dataset.v==="exec"?"ok":"na");else b2.removeAttribute("data-on");});refreshBadge("servicos");});});
+  scope.querySelectorAll("[data-svcobs]").forEach(t=>{const s=find(t.dataset.svcobs);if(!s)return;t.oninput=()=>{s.obs=t.value;persistSoon();};});
+  scope.querySelectorAll("[data-svcfoto]").forEach(b=>{const s=find(b.dataset.svcfoto);if(!s)return;b.onclick=()=>pickImage({max:1280,mime:"image/jpeg",q:0.7,capture:true},r=>{s.fotos.push(r.data);persist();updateServicos();});});
+  scope.querySelectorAll("[data-svcdelfoto]").forEach(b=>{b.onclick=()=>{const p=b.dataset.svcdelfoto,i=p.lastIndexOf(":"),s=find(p.slice(0,i));if(s){s.fotos.splice(+p.slice(i+1),1);persist();updateServicos();}};});
+  scope.querySelectorAll("[data-svcdel]").forEach(b=>{b.onclick=()=>{c.servicos=c.servicos.filter(x=>x.id!==b.dataset.svcdel);persist();updateServicos();refreshBadge("servicos");};});
+  const add=scope.querySelector("#svcAdd");if(add)add.onclick=()=>{const nome=prompt("Nome do registro (ex.: Limpeza geral do cubículo):");if(nome&&nome.trim()){c.servicos.push({id:uid(),nome:nome.trim(),status:"exec",obs:"",fotos:[],fixo:false});persist();updateServicos();refreshBadge("servicos");}};}
+function ensureEnsaios(cub){if(!cub)return;if(!Array.isArray(cub.servicos))cub.servicos=seedServicos();let e=cub.ensaios;if(!e||typeof e!=="object")e=cub.ensaios={};
   ["disj","chave","cabo","tp","tc"].forEach(g=>{if(!e[g]||typeof e[g]!=="object")e[g]={};});
   const fill=(o,keys)=>keys.forEach(k=>{if(o[k]===undefined)o[k]="";});
   ["disj","chave"].forEach(g=>{const b=e[g];
@@ -1013,7 +1117,7 @@ function ensureEnsaios(cub){if(!cub)return;let e=cub.ensaios;if(!e||typeof e!=="
 function showPdfModal(blob,url,fname){let ov=document.getElementById("pdfModal");if(ov)ov.remove();
   const canShare=!!(navigator.canShare&&(()=>{try{return navigator.canShare({files:[new File([blob],fname,{type:"application/pdf"})]});}catch(_){return false;}})());
   ov=document.createElement("div");ov.id="pdfModal";ov.className="pdf-ov";
-  ov.innerHTML=`<div class="pdf-box"><div class="pdf-bar"><strong>Laudo pronto</strong><div class="pdf-actions">${canShare?'<button type="button" data-a="share">Compartilhar</button>':""}<button type="button" data-a="print">Imprimir</button><button type="button" data-a="dl">Baixar</button><button type="button" data-a="tab">Nova aba</button><button type="button" data-a="close">Fechar</button></div></div><iframe class="pdf-frame" src="${url}"></iframe></div>`;
+  ov.innerHTML=`<div class="pdf-box"><div class="pdf-bar"><strong>Laudo pronto</strong><div class="pdf-actions">${canShare?'<button type="button" data-a="share">Compartilhar</button>':""}<button type="button" data-a="print">Imprimir</button><button type="button" data-a="dl">Baixar</button><button type="button" data-a="tab">Nova aba</button><button type="button" data-a="close">Fechar</button></div></div><div class="pdf-hint">No iPhone: toque em <b>Compartilhar</b> para enviar ao cliente (WhatsApp/E-mail), salvar em Arquivos ou imprimir (AirPrint).</div><iframe class="pdf-frame" src="${url}"></iframe></div>`;
   document.body.appendChild(ov);const fr=ov.querySelector("iframe");
   ov.querySelector('[data-a="close"]').onclick=()=>{try{URL.revokeObjectURL(url);}catch(_){}ov.remove();};
   ov.querySelector('[data-a="dl"]').onclick=()=>{const a=document.createElement("a");a.href=url;a.download=fname;document.body.appendChild(a);a.click();a.remove();};
